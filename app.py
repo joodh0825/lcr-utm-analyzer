@@ -7,18 +7,12 @@ from scipy.signal import find_peaks
 st.set_page_config(layout="wide")
 st.title("10-Cycle Hysteresis Analyzer (ΔC/C)")
 
-# -----------------------------
-# File Upload
-# -----------------------------
 utm_file = st.file_uploader("Upload UTM File (csv or xlsx)", type=["csv","xlsx"])
 lcr_file = st.file_uploader("Upload LCR File (csv or xlsx)", type=["csv","xlsx"])
 
 diameter = st.number_input("Sample Diameter (mm)", value=20.0)
 baseline_kpa = st.number_input("Baseline Stress Shift (kPa)", value=1.0)
 
-# -----------------------------
-# Safe Load Function
-# -----------------------------
 def load_file(file):
     name = file.name.lower()
     if name.endswith(".csv"):
@@ -31,48 +25,49 @@ def load_file(file):
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
-# -----------------------------
-# Main
-# -----------------------------
 if utm_file and lcr_file:
 
-    utm = load_file(utm_file)
-    lcr = load_file(lcr_file)
+    utm_raw = load_file(utm_file)
+    lcr_raw = load_file(lcr_file)
 
-    # -------------------------
-    # Auto Column Detection
-    # -------------------------
-    try:
-        utm_time_col = next(c for c in utm.columns if "time" in c.lower())
-        utm_load_col = next(c for c in utm.columns if "load" in c.lower())
-        lcr_time_col = next(c for c in lcr.columns if "time" in c.lower())
-        lcr_cap_col  = next(c for c in lcr.columns if "cap" in c.lower())
-    except:
-        st.error("Column detection failed. Please ensure column names contain 'Time', 'Load', 'Cap'.")
-        st.stop()
+    st.subheader("UTM Columns")
+    st.write(utm_raw.columns)
 
-    utm = utm[[utm_time_col, utm_load_col]].dropna()
-    lcr = lcr[[lcr_time_col, lcr_cap_col]].dropna()
+    st.subheader("LCR Columns")
+    st.write(lcr_raw.columns)
+
+    # 🔹 사용자 선택 방식
+    utm_time_col = st.selectbox("Select UTM Time Column", utm_raw.columns)
+    utm_load_col = st.selectbox("Select UTM Load Column", utm_raw.columns)
+
+    lcr_time_col = st.selectbox("Select LCR Time Column", lcr_raw.columns)
+    lcr_cap_col  = st.selectbox("Select LCR Capacitance Column", lcr_raw.columns)
+
+    utm = utm_raw[[utm_time_col, utm_load_col]].copy()
+    lcr = lcr_raw[[lcr_time_col, lcr_cap_col]].copy()
 
     utm.columns = ["Time","Load"]
     lcr.columns = ["Time","Cap"]
 
+    utm = utm.apply(pd.to_numeric, errors="coerce").dropna()
+    lcr = lcr.apply(pd.to_numeric, errors="coerce").dropna()
+
     utm = utm.sort_values("Time")
     lcr = lcr.sort_values("Time")
 
-    # -------------------------
-    # Stress Conversion (Circular sample)
-    # -------------------------
+    # ----------------------
+    # 원형 샘플 Ø20mm
+    # ----------------------
     r = (diameter/2) * 1e-3
     A = np.pi * r**2
 
     utm["Force_N"] = utm["Load"] * 9.80665
     utm["Stress_kPa"] = (utm["Force_N"]/A)/1000
-    utm["Stress_kPa"] = utm["Stress_kPa"] - baseline_kpa
+    utm["Stress_kPa"] -= baseline_kpa
 
-    # -------------------------
-    # Align LCR to UTM time
-    # -------------------------
+    # ----------------------
+    # 시간 정렬
+    # ----------------------
     cap_interp = np.interp(
         utm["Time"],
         lcr["Time"],
@@ -86,18 +81,17 @@ if utm_file and lcr_file:
     df = df.dropna()
 
     if len(df) < 100:
-        st.error("Data overlap too small. Check time alignment.")
+        st.error("Time overlap too small.")
         st.stop()
 
-    # -------------------------
-    # Cycle Detection (11 cycles expected)
-    # -------------------------
     stress = df["Stress_kPa"].values
 
-    peaks, _ = find_peaks(stress, height=0.5*np.max(stress), distance=len(stress)/15)
+    peaks, _ = find_peaks(
+        stress,
+        height=0.5*np.max(stress),
+        distance=len(stress)/15
+    )
 
-    if len(peaks) < 11:
-        st.warning(f"Detected {len(peaks)} peaks. Expected 11.")
     if len(peaks) < 2:
         st.error("Cycle detection failed.")
         st.stop()
@@ -112,11 +106,7 @@ if utm_file and lcr_file:
     valleys.append(np.argmin(stress[peaks[-1]:]) + peaks[-1])
     valleys = np.array(valleys)
 
-    # -------------------------
-    # Plot Hysteresis (Cycle 2~11)
-    # -------------------------
     fig, ax = plt.subplots()
-
     hysteresis_vals = []
 
     for i in range(1, min(11, len(valleys)-1)):
@@ -129,12 +119,10 @@ if utm_file and lcr_file:
 
         ax.plot(seg["Stress_kPa"], deltaC)
 
-        # hysteresis calculation
         s = seg["Stress_kPa"].values
         c = deltaC.values
 
         p = np.argmax(s)
-
         s_load, c_load = s[:p+1], c[:p+1]
         s_un, c_un = s[p:], c[p:]
 
@@ -157,13 +145,8 @@ if utm_file and lcr_file:
     ax.set_title("Hysteresis Loop (Cycle 2~11)")
     st.pyplot(fig)
 
-    # -------------------------
-    # Results
-    # -------------------------
     if hysteresis_vals:
-        st.subheader("Hysteresis Results (Cycle 2~11)")
+        st.subheader("Hysteresis Results")
         st.write(f"Mean: {np.mean(hysteresis_vals):.3f} %")
         st.write(f"Std: {np.std(hysteresis_vals):.3f} %")
         st.line_chart(hysteresis_vals)
-    else:
-        st.warning("Hysteresis calculation skipped.")
