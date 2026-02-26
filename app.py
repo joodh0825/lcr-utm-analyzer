@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import find_peaks
 
 st.set_page_config(layout="wide")
 st.title("10-Cycle Hysteresis Analyzer (ΔC/C)")
@@ -36,7 +35,6 @@ if utm_file and lcr_file:
     st.subheader("LCR Columns")
     st.write(lcr_raw.columns)
 
-    # 🔹 사용자 선택 방식
     utm_time_col = st.selectbox("Select UTM Time Column", utm_raw.columns)
     utm_load_col = st.selectbox("Select UTM Load Column", utm_raw.columns)
 
@@ -55,9 +53,9 @@ if utm_file and lcr_file:
     utm = utm.sort_values("Time")
     lcr = lcr.sort_values("Time")
 
-    # ----------------------
-    # 원형 샘플 Ø20mm
-    # ----------------------
+    # =========================
+    # Circular sample Ø20 mm
+    # =========================
     r = (diameter/2) * 1e-3
     A = np.pi * r**2
 
@@ -65,9 +63,9 @@ if utm_file and lcr_file:
     utm["Stress_kPa"] = (utm["Force_N"]/A)/1000
     utm["Stress_kPa"] -= baseline_kpa
 
-    # ----------------------
-    # 시간 정렬
-    # ----------------------
+    # =========================
+    # Align LCR to UTM time
+    # =========================
     cap_interp = np.interp(
         utm["Time"],
         lcr["Time"],
@@ -84,34 +82,35 @@ if utm_file and lcr_file:
         st.error("Time overlap too small.")
         st.stop()
 
+    # =========================
+    # Derivative-based Cycle Detection
+    # =========================
     stress = df["Stress_kPa"].values
+    time = df["Time"].values
 
-    peaks, _ = find_peaks(
-        stress,
-        height=0.5*np.max(stress),
-        distance=len(stress)/15
-    )
-
-    if len(peaks) < 2:
-        st.error("Cycle detection failed.")
-        st.stop()
+    d = np.diff(stress)
+    sign_change = np.where(np.diff(np.sign(d)) != 0)[0]
 
     valleys = []
-    valleys.append(np.argmin(stress[:peaks[0]+1]))
+    for idx in sign_change:
+        if stress[idx] < np.mean(stress):
+            valleys.append(idx)
 
-    for i in range(len(peaks)-1):
-        a,b = peaks[i], peaks[i+1]
-        valleys.append(np.argmin(stress[a:b+1]) + a)
-
-    valleys.append(np.argmin(stress[peaks[-1]:]) + peaks[-1])
     valleys = np.array(valleys)
 
+    if len(valleys) < 11:
+        st.error(f"Detected {len(valleys)} cycles. Expected 11.")
+        st.stop()
+
+    # =========================
+    # Plot Hysteresis (Cycle 2~11)
+    # =========================
     fig, ax = plt.subplots()
     hysteresis_vals = []
 
-    for i in range(1, min(11, len(valleys)-1)):
+    for i in range(1, 11):
 
-        a,b = valleys[i], valleys[i+1]
+        a, b = valleys[i], valleys[i+1]
         seg = df.iloc[a:b+1]
 
         C0 = seg["Cap"].iloc[0]
@@ -145,8 +144,11 @@ if utm_file and lcr_file:
     ax.set_title("Hysteresis Loop (Cycle 2~11)")
     st.pyplot(fig)
 
+    # =========================
+    # Results
+    # =========================
     if hysteresis_vals:
-        st.subheader("Hysteresis Results")
+        st.subheader("Hysteresis Results (Cycle 2~11)")
         st.write(f"Mean: {np.mean(hysteresis_vals):.3f} %")
         st.write(f"Std: {np.std(hysteresis_vals):.3f} %")
         st.line_chart(hysteresis_vals)
