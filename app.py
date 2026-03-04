@@ -88,40 +88,30 @@ if utm_file and lcr_file:
     df["Cap"] = cap_interp
     df = df.dropna()
 
-    # 사이클 감지 및 분석 로직 (중략 - 기존 로직 유지)
-    stress = df["Stress_kPa"].values
-    d = np.diff(stress)
-    sign_change = np.where(np.diff(np.sign(d)) != 0)[0]
-    valleys = [idx for idx in sign_change if stress[idx] < np.mean(stress)]
-    valleys = np.array(valleys)
+    # =========================
+    # Double Y-axis Plot: Time vs (Load & Cp)
+    # =========================
+    st.subheader("Time-Series Synchronization (Load & Cp)")
+    
+    fig, ax1 = plt.subplots(figsize=(12, 5))
 
-    if len(valleys) >= 11:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        hysteresis_vals = []
+    # 왼쪽 축: Load (N)
+    color1 = 'tab:blue'
+    ax1.set_xlabel('Time (s)')
+    ax1.set_ylabel('Load (N)', color=color1)
+    ax1.plot(df['Time'], df['Load'], color=color1, label='Load (UTM)')
+    ax1.tick_params(axis='y', labelcolor=color1)
+    ax1.grid(True, alpha=0.3)
 
-        for i in range(1, 11):
-            a, b = valleys[i], valleys[i+1]
-            seg = df.iloc[a:b+1]
-            C0 = seg["Cap"].iloc[0]
-            deltaC = (seg["Cap"] - C0) / C0
-            ax.plot(seg["Stress_kPa"], deltaC, alpha=0.7, label=f'Cycle {i+1}')
+    # 오른쪽 축: Cp (F)
+    ax2 = ax1.twinx()
+    color2 = 'tab:red'
+    ax2.set_ylabel('Capacitance (F)', color=color2)
+    ax2.plot(df['Time'], df['Cap'], color=color2, label='Cp (LCR)')
+    ax2.tick_params(axis='y', labelcolor=color2)
 
-            # 히스테리시스 계산 (Loading vs Unloading)
-            s = seg["Stress_kPa"].values
-            c = deltaC.values
-            p = np.argmax(s)
-            s_load, c_load = s[:p+1], c[:p+1]
-            s_un, c_un = s[p:], c[p:]
-            
-            grid = np.linspace(min(s), max(s), 200)
-            cL = np.interp(grid, np.sort(s_load), c_load[np.argsort(s_load)])
-            cU = np.interp(grid, np.sort(s_un), c_un[np.argsort(s_un)])
-            H = np.max(np.abs(cL - cU)) * 100
-            hysteresis_vals.append(H)
-
-        ax.set_xlabel("Stress (kPa)")
-        ax.set_ylabel("ΔC / C0")
-        ax.set_title("Hysteresis Loop (Cycle 2~11)")
+    fig.tight_layout()
+    st.pyplot(fig)
         st.pyplot(fig)
 
         # 결과 요약
