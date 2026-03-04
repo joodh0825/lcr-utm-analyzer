@@ -112,10 +112,16 @@ if utm_file and lcr_file:
 
     fig.tight_layout()
     st.pyplot(fig)
-        st.pyplot(fig)
 
-        # 결과 요약
+    # =========================
+    # Results & Summary
+    # =========================
+    if len(valleys) >= 11:
         st.subheader("Hysteresis Results (Cycle 2~11)")
-        st.write(f"Mean: {np.mean(hysteresis_vals):.3f} % | Std: {np.std(hysteresis_vals):.3f} %")
+        # hysteresis_vals가 루프 내에서 계산된 후 출력되어야 함
+        if 'hysteresis_vals' in locals() and hysteresis_vals:
+            st.write(f"Mean Hysteresis: **{np.mean(hysteresis_vals):.3f} %**")
+            st.write(f"Standard Deviation: **{np.std(hysteresis_vals):.3f} %**")
+            st.line_chart(hysteresis_vals)
     else:
-        st.warning(f"Detected only {len(valleys)} cycles. Check data range.")
+        st.warning(f"Detected only {len(valleys)} cycles. Check data range for Hysteresis analysis.")
