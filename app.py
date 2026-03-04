@@ -91,19 +91,23 @@ if utm_file and lcr_file:
     # =========================
     # Double Y-axis Plot: Time vs (Load & Cp)
     # =========================
+    stress = df["Stress_kPa"].values
+    d = np.diff(stress)
+    sign_change = np.where(np.diff(np.sign(d)) != 0)[0]
+    valleys = np.array([idx for idx in sign_change if stress[idx] < np.mean(stress)])
+
+    # =========================
+    # 2. Double Y-axis Plot
+    # =========================
     st.subheader("Time-Series Synchronization (Load & Cp)")
-    
     fig, ax1 = plt.subplots(figsize=(12, 5))
 
-    # 왼쪽 축: Load (N)
     color1 = 'tab:blue'
     ax1.set_xlabel('Time (s)')
     ax1.set_ylabel('Load (N)', color=color1)
     ax1.plot(df['Time'], df['Load'], color=color1, label='Load (UTM)')
     ax1.tick_params(axis='y', labelcolor=color1)
-    ax1.grid(True, alpha=0.3)
 
-    # 오른쪽 축: Cp (F)
     ax2 = ax1.twinx()
     color2 = 'tab:red'
     ax2.set_ylabel('Capacitance (F)', color=color2)
@@ -112,6 +116,11 @@ if utm_file and lcr_file:
 
     fig.tight_layout()
     st.pyplot(fig)
+
+    # =========================
+    # 3. Hysteresis Analysis (Using 'valleys')
+    # =========================
+    if len(valleys) >= 11:
 
     # =========================
     # Results & Summary
