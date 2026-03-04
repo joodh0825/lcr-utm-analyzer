@@ -22,9 +22,19 @@ def load_file(file):
     if name.endswith(".csv"):
         # [수정] LCR 데이터: 1~3행, 5행 제외하고 읽기
         try:
-            df = pd.read_csv(file, skiprows=[0, 1, 2, 4])
-        except:
-            df = pd.read_csv(file, skiprows=[0, 1, 2, 4], encoding="cp949", engine="python")
+            # 먼저 전체를 읽어서 헤더와 데이터를 분리
+            raw_df = pd.read_csv(file, header=None, encoding="cp949")
+            # 4행(index 3)을 컬럼명으로 사용
+            cols = raw_df.iloc[3].tolist()
+            # 6행(index 5)부터 실제 데이터
+            df = raw_df.iloc[5:].copy()
+            df.columns = cols
+        except Exception as e:
+            # 에러 발생 시 엔진 변경 시도
+            raw_df = pd.read_csv(file, header=None, engine="python", encoding="cp949")
+            cols = raw_df.iloc[3].tolist()
+            df = raw_df.iloc[5:].copy()
+            df.columns = cols
     else:
         # [수정] UTM 데이터: B(Time), C(Load) 열만 선택
         df = pd.read_excel(file, usecols=[1, 2])
