@@ -54,17 +54,13 @@ if utm_file and lcr_file:
     utm = load_file(utm_file)
     lcr = load_file(lcr_file)
 
-    # [수정] 압력 환산 (kgf -> N -> kPa)
-    # 1 kgf = 9.80665 N, 1 kPa = 1000 N/m^2
+    # 0. 기초 시간축 설정 및 단위 변환 (kgf to kPa, pF to F)
     u_raw_time = utm["Time"] - utm["Time"].iloc[0]
     utm["Stress_kPa"] = ((utm["Load"] * 9.80665) / area_m2) / 1000 - baseline_kpa
-    
     l_raw_time = lcr["Time"] - lcr["Time"].iloc[0]
 
-    # --- 이후 Manual Alignment & Zoom 로직 (동일) ---
-    st.subheader("Fine-Tuning: Manual Alignment & Zoom")
     # =========================
-    # Fine-Tuning: Alignment & Zoom (Slider + Input)
+    # 1. Fine-Tuning Interface (Slider + Input 연동)
     # =========================
     st.divider()
     st.subheader("Fine-Tuning: Manual Alignment & Zoom View")
@@ -72,38 +68,51 @@ if utm_file and lcr_file:
     col_off, col_zoom = st.columns(2)
     
     with col_off:
-        st.write("Step 1: Time Offset (s)")
-        inner_col1, inner_col2 = st.columns([3, 1])
-        with inner_col1:
-            s_offset = st.slider("Offset Slider", -10.0, 10.0, 0.0, 0.01, key="s_off")
-        with inner_col2:
-            i_offset = st.number_input("Input (s)", value=s_offset, step=0.001, key="i_off")
+        st.write("**Step 1: Time Offset (s)**")
+        # 수치 입력창을 기준으로 슬라이더가 움직이도록 구성
+        i_offset = st.number_input("Input Offset Value (s)", value=0.000, step=0.001, format="%.3f", key="i_off")
+        s_offset = st.slider("Fine-tune with Slider", -10.0, 10.0, i_offset, 0.01, key="s_off")
+        # 최종 오프셋은 수치 입력창과 슬라이더 중 최근 변경된 값을 반영 (여기서는 수치 우선)
         final_offset = i_offset
 
     with col_zoom:
-        st.write("Step 2: Time Zoom (s)")
+        st.write("**Step 2: Time Zoom (s)**")
         max_t = float(u_raw_time.max())
-        z_range = st.slider("Zoom Slider", 0.0, max_t, (0.0, max_t), key="s_zoom")
-        z_min = st.number_input("Start (s)", value=z_range[0], step=0.1, key="i_zmin")
-        z_max = st.number_input("End (s)", value=z_range[1], step=0.1, key="i_zmax")
-        final_zoom = (z_min, z_max)
+        z_min_input = st.number_input("Start Time (s)", value=0.0, step=0.1)
+        z_max_input = st.number_input("End Time (s)", value=max_t, step=0.1)
+        final_zoom = (z_min_input, z_max_input)
 
-    # 데이터 실시간 재계산
+    # =========================
+    # 2. 데이터 동기화 및 보간 계산
+    # =========================
     l_adj_time = l_raw_time + final_offset
     cap_interp = np.interp(u_raw_time, l_adj_time, lcr["Cap"], left=np.nan, right=np.nan)
+    
     df_sync = pd.DataFrame({
         "Time": u_raw_time, 
         "Stress_kPa": utm["Stress_kPa"], 
         "Cap": cap_interp
     }).dropna()
 
-    # 결과 그래프 (수정된 파라미터 즉시 반영)
+    # =========================
+    # 3. 이중 그래프 출력 (Reference & Zoom)
+    # =========================
+    # (1) 상단 원본 그래프
+    st.subheader("Reference: Original Raw Data (Unadjusted)")
+    fig_ref, ax_ref = plt.subplots(figsize=(12, 3))
+    ax_ref.plot(u_raw_time, utm["Stress_kPa"], color='tab:blue', alpha=0.4, label='Stress')
+    ax_ref_twin = ax_ref.twinx()
+    ax_ref_twin.plot(l_raw_time, lcr["Cap"], color='tab:red', alpha=0.4, label='Cap')
+    ax_ref.set_title("Initial State (Time Offset = 0)")
+    st.pyplot(fig_ref)
+
+    # (2) 하단 확대 및 조정 그래프
+    st.subheader("Adjusted & Zoomed View")
     fig_adj, ax_adj1 = plt.subplots(figsize=(12, 5))
     ax_adj1.plot(df_sync['Time'], df_sync['Stress_kPa'], color='tab:blue', label='Stress (kPa)', linewidth=1.5)
     ax_adj1.set_ylabel('Stress (kPa)', color='tab:blue')
     
     ax_adj2 = ax_adj1.twinx()
-    # Capacitance 단위 가독성을 위해 pF로 다시 표시하거나 F로 유지
     ax_adj2.plot(df_sync['Time'], df_sync['Cap'], color='tab:red', label='Capacitance (F)', linewidth=1.5)
     ax_adj2.set_ylabel('Capacitance (F)', color='tab:red')
     
@@ -113,23 +122,9 @@ if utm_file and lcr_file:
     fig_adj.tight_layout()
     st.pyplot(fig_adj)
 
-    l_adj_time = l_raw_time + time_offset
-    cap_interp = np.interp(u_raw_time, l_adj_time, lcr["Cap"], left=np.nan, right=np.nan)
-    
-    df_sync = pd.DataFrame({"Time": u_raw_time, "Stress_kPa": utm["Stress_kPa"], "Cap": cap_interp}).dropna()
-
-    # 하단 확대 그래프 (Stress vs Cap)
-    fig_adj, ax_adj1 = plt.subplots(figsize=(12, 5))
-    ax_adj1.plot(df_sync['Time'], df_sync['Stress_kPa'], color='tab:blue', label='Stress (kPa)', linewidth=2)
-    ax_adj1.set_ylabel('Stress (kPa)', color='tab:blue')
-    ax_adj2 = ax_adj1.twinx()
-    ax_adj2.plot(df_sync['Time'], df_sync['Cap'], color='tab:red', label='Capacitance (F)', linewidth=2)
-    ax_adj2.set_ylabel('Capacitance (F)', color='tab:red')
-    ax_adj1.set_xlim(zoom_range[0], zoom_range[1])
-    fig_adj.tight_layout()
-    st.pyplot(fig_adj)
-
-    # 3. 데이터 프리뷰 및 다운로드
+    # =========================
+    # 4. 데이터 저장 및 내보내기
+    # =========================
     st.divider()
     st.subheader("Synchronized Data Preview & Export")
     st.dataframe(df_sync, use_container_width=True)
