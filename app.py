@@ -44,15 +44,40 @@ if utm_file and lcr_file:
     utm = load_file(utm_file)
     lcr = load_file(lcr_file)
 
-    # 시작 시간 0으로 맞추기 (Sync 준비)
-    utm["Time"] -= utm["Time"].iloc[0]
-    lcr["Time"] -= lcr["Time"].iloc[0]
+    # =========================
+    # Time Offset Control
+    # =========================
+    st.divider()
+    st.subheader("Manual Time Alignment")
+    
+    # 슬라이더로 LCR 시간 미세 조정 (초 단위)
+    time_offset = st.slider("Adjust LCR Time Offset (seconds)", -10.0, 10.0, 0.0, 0.1)
 
-    # UTM 시간축 기준으로 LCR 데이터 보간 (시간 보간)
-    cap_interp = np.interp(utm["Time"], lcr["Time"], lcr["Cap"], left=np.nan, right=np.nan)
-    df_sync = utm.copy()
-    df_sync["Cap_Interp"] = cap_interp
-    df_sync = df_sync.dropna()
+    # 기본 Zero-offset 적용
+    u_time = utm["Time"] - utm["Time"].iloc[0]
+    l_time = lcr["Time"] - lcr["Time"].iloc[0] + time_offset # 슬라이더 값 반영
+
+    # 동적으로 보간 재계산
+    cap_interp = np.interp(u_time, l_time, lcr["Cap"], left=np.nan, right=np.nan)
+    
+    df_sync = pd.DataFrame({
+        "Time": u_time,
+        "Load": utm["Load"],
+        "Cap_Interp": cap_interp
+    }).dropna()
+
+    # 실시간 반영 그래프 출력
+    fig_sync, ax1 = plt.subplots(figsize=(12, 5))
+    ax1.plot(df_sync['Time'], df_sync['Load'], color='tab:blue', label='Load (UTM)')
+    ax1.set_ylabel('Load (N)', color='tab:blue')
+    
+    ax2 = ax1.twinx()
+    ax2.plot(df_sync['Time'], df_sync['Cap_Interp'], color='tab:red', label='Interpolated Cp (LCR)')
+    ax2.set_ylabel('Capacitance (F)', color='tab:red')
+    
+    ax1.set_xlabel('Time (s)')
+    fig_sync.tight_layout()
+    st.pyplot(fig_sync)
 
     # =========================
     # Double Y-axis Plot: Time-Series
