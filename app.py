@@ -63,11 +63,55 @@ if utm_file and lcr_file:
 
     # --- 이후 Manual Alignment & Zoom 로직 (동일) ---
     st.subheader("Fine-Tuning: Manual Alignment & Zoom")
-    c1, c2 = st.columns(2)
-    with c1:
-        time_offset = st.slider("Adjust LCR Time Offset (s)", -5.0, 5.0, 0.0, 0.01)
-    with c2:
-        zoom_range = st.slider("Zoom Time Window (s)", 0.0, float(u_raw_time.max()), (0.0, float(u_raw_time.max())))
+    # =========================
+    # Fine-Tuning: Alignment & Zoom (Slider + Input)
+    # =========================
+    st.divider()
+    st.subheader("Fine-Tuning: Manual Alignment & Zoom View")
+    
+    col_off, col_zoom = st.columns(2)
+    
+    with col_off:
+        st.write("Step 1: Time Offset (s)")
+        inner_col1, inner_col2 = st.columns([3, 1])
+        with inner_col1:
+            s_offset = st.slider("Offset Slider", -10.0, 10.0, 0.0, 0.01, key="s_off")
+        with inner_col2:
+            i_offset = st.number_input("Input (s)", value=s_offset, step=0.001, key="i_off")
+        final_offset = i_offset
+
+    with col_zoom:
+        st.write("Step 2: Time Zoom (s)")
+        max_t = float(u_raw_time.max())
+        z_range = st.slider("Zoom Slider", 0.0, max_t, (0.0, max_t), key="s_zoom")
+        z_min = st.number_input("Start (s)", value=z_range[0], step=0.1, key="i_zmin")
+        z_max = st.number_input("End (s)", value=z_range[1], step=0.1, key="i_zmax")
+        final_zoom = (z_min, z_max)
+
+    # 데이터 실시간 재계산
+    l_adj_time = l_raw_time + final_offset
+    cap_interp = np.interp(u_raw_time, l_adj_time, lcr["Cap"], left=np.nan, right=np.nan)
+    df_sync = pd.DataFrame({
+        "Time": u_raw_time, 
+        "Stress_kPa": utm["Stress_kPa"], 
+        "Cap": cap_interp
+    }).dropna()
+
+    # 결과 그래프 (수정된 파라미터 즉시 반영)
+    fig_adj, ax_adj1 = plt.subplots(figsize=(12, 5))
+    ax_adj1.plot(df_sync['Time'], df_sync['Stress_kPa'], color='tab:blue', label='Stress (kPa)', linewidth=1.5)
+    ax_adj1.set_ylabel('Stress (kPa)', color='tab:blue')
+    
+    ax_adj2 = ax_adj1.twinx()
+    # Capacitance 단위 가독성을 위해 pF로 다시 표시하거나 F로 유지
+    ax_adj2.plot(df_sync['Time'], df_sync['Cap'], color='tab:red', label='Capacitance (F)', linewidth=1.5)
+    ax_adj2.set_ylabel('Capacitance (F)', color='tab:red')
+    
+    ax_adj1.set_xlim(final_zoom[0], final_zoom[1])
+    ax_adj1.set_xlabel('Time (s)')
+    ax_adj1.grid(True, which='both', linestyle='--', alpha=0.5)
+    fig_adj.tight_layout()
+    st.pyplot(fig_adj)
 
     l_adj_time = l_raw_time + time_offset
     cap_interp = np.interp(u_raw_time, l_adj_time, lcr["Cap"], left=np.nan, right=np.nan)
