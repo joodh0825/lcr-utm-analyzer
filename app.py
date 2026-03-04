@@ -75,5 +75,20 @@ if utm_file and lcr_file:
     fig.tight_layout()
     st.pyplot(fig)
 
-    # 데이터 확인용 테이블 (선택 사항)
-    st.write("Synchronized Data Preview", df_sync.head())
+    # =========================
+    # Data Table & Export
+    # =========================
+    st.divider()
+    st.subheader("Synchronized Data Preview")
+    
+    # 1. 데이터 테이블 출력 (전체 데이터 확인용)
+    st.dataframe(df_sync, use_container_width=True)
+
+    # 2. CSV 다운로드 버튼 생성
+    csv_data = df_sync.to_csv(index=False).encode('utf-8')
+    
+    st.download_button(
+        label="Download Synchronized Data as CSV",
+        data=csv_data,
+        file_name='synchronized_sensor_data.csv',
+        mime='text/csv',
